@@ -408,15 +408,16 @@ class AdversarialTraining(object):
                 outputs = self.classifier_net.forward(self.normalizer(inputs))
 
                 # Split real and adversarial images
+                # Todo: Testing continue doesn't work wrong
                 try:
-                    image, adv_image = torch.split(outputs, 128)
-                    labels, _ = torch,split(labels,128)
+                    image, adv_image = torch.split(outputs, 256)  # change to your batch size
+                    labels, _ = torch.split(labels,256)
                 except:
                     # discard last batch
                     continue
 
                 # forward step
-                loss = train_loss.forward(image, label)
+                loss = train_loss.forward(image, labels)
                 if regularize_adv_scale is not None:
                     # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
                     reg_adv_loss = regularize_adv_criterion(image, adv_image)  ##check do i need to detach here?
