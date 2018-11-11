@@ -1,4 +1,4 @@
-""" Contains training code for adversarial training """
+""" Contains training code for adversarial logit pairing """
 from __future__ import print_function
 import torch
 import torchvision
@@ -406,19 +406,19 @@ class AdversarialTraining(object):
                 optimizer.zero_grad()
 
                 outputs = self.classifier_net.forward(self.normalizer(inputs))
+
+                # Split real and adversarial images
+                try:
+                    image, adv_image = torch.split(outputs, 128)
+                    labels, _ = torch,split(labels,128)
+                except:
+                    # discard last batch
+                    continue
+
+                # forward step
+                loss = train_loss.forward(image, label)
                 if regularize_adv_scale is not None:
                     # BE SURE TO 'DETACH' THE ADV_INPUTS!!!
-                    try:
-                        image, adv_image = torch.split(outputs, 128)
-                        labels, _ = torch,split(labels,128)
-                    except:
-                        # discard last batch
-                        continue
-
-                    # forward step
-
-                    loss = train_loss.forward(image, label)
-
                     reg_adv_loss = regularize_adv_criterion(image, adv_image)  ##check do i need to detach here?
 
                     #print(float(loss), regularize_adv_scale * float(reg_adv_loss))
