@@ -60,7 +60,7 @@ def check_data_loaded():
     print("...CIFAR10 data looks okay!")
 
 
-check_cifar_data_loaded()
+check_data_loaded()
 
 
 ##############################################################################
