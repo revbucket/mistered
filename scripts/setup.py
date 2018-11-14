@@ -46,7 +46,7 @@ def check_data_loaded():
     print("Checking MNIST data loaded...")
     dataset_dir = config.DEFAULT_DATASETS_DIR
 
-    train_set = dataset.MNIST(root=dataset_dir, train=True, download=True)
+    train_set = datasets.MNIST(root=dataset_dir, train=True, download=True)
     val_set = datasets.MNIST(root=dataset_dir, train=False, download=True)
 
     print("...MNIST data looks okay!")
