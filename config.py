@@ -27,6 +27,9 @@ OUTPUT_IMAGE_PATH = path_resolver(unexpanded_output_image_path)
 
 DEFAULT_BATCH_SIZE = config_dict['batch_size']
 DEFAULT_WORKERS = config_dict['default_workers']
+MNIST_MEANS = config_dict['mnist_means']
+MNIST_STDS = config_dict['mnist_stds']
+
 CIFAR10_MEANS = config_dict['cifar10_means']
 CIFAR10_STDS = config_dict['cifar10_stds']
 
