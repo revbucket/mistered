@@ -1,7 +1,8 @@
 """ Script to ensure that:
 1) all dependencies are installed correctly
-2) CIFAR data can be accessed locally
-3) a functional classifier for CIFAR has been loaded.
+2) MNIST and CIFAR data can be accessed locally
+3) a functional classifier for MNIST has been loaded.
+4) Functional classifiers for MNIST has been loaded.
 
 """
 
@@ -37,11 +38,19 @@ print("...imports look okay!")
 
 ##############################################################################
 #                                                                            #
-#                       STEP TWO: CIFAR DATA HAS BEEN LOADED                 #
+#                       STEP TWO: CIFAR/MNIST DATA HAS BEEN LOADED           #
 #                                                                            #
 ##############################################################################
 
-def check_cifar_data_loaded():
+def check_data_loaded():
+    print("Checking MNIST data loaded...")
+    dataset_dir = config.DEFAULT_DATASETS_DIR
+
+    train_set = dataset.MNIST(root=dataset_dir, train=True, download=True)
+    val_set = datasets.MNIST(root=dataset_dir, train=False, download=True)
+
+    print("...MNIST data looks okay!")
+
     print("Checking CIFAR10 data loaded...")
     dataset_dir = config.DEFAULT_DATASETS_DIR
 
@@ -53,9 +62,10 @@ def check_cifar_data_loaded():
 
 check_cifar_data_loaded()
 
+
 ##############################################################################
 #                                                                            #
-#                       STEP THREE: LOAD CLASSIFIER FOR CIFAR10              #
+#                       STEP THREE: LOAD CLASSIFIER FOR MNIST                #
 #                                                                            #
 ##############################################################################
 
@@ -68,6 +78,21 @@ def file_hash(filename):
       h.update(b)
   return h.hexdigest()
 
+
+def load_mnist_classifiers():
+    print("Checking MNIST classifier exists...")
+
+    # TODO: Add Pretrained model
+
+
+load_mnist_classifiers()
+
+
+##############################################################################
+#                                                                            #
+#                       STEP FOUR: LOAD CLASSIFIER FOR CIFAR10               #
+#                                                                            #
+##############################################################################
 
 
 def load_cifar_classifiers():
@@ -140,4 +165,3 @@ load_cifar_classifiers()
 
 print("\n Okay, you should be good to go now! ")
 print("Try running tutorial_{1,2,3}.ipynb in notebooks/")
-
