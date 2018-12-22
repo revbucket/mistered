@@ -7,17 +7,17 @@ import cifar10.cifar_loader as cl
 import torch.utils.data as data
 
 
-class cifarSubset(data.Dataset):
+class cifar_subset(data.Dataset):
     """Custom cifar subset for different evaluation experiments"""
 
-    def __init__(self, mode = 'val', size=100, shuffle=True):
+    def __init__(self, mode='val', size=100, shuffle=True):
         """
         :param size: size of the custom dataset
         :param shuffle: set to True if we only traverse the datset once, False otherwise
         """
         self.size = size
-        data = iter(cl.load_cifar_data(mode, batch_size=size))
-        self.inputs, self.labels = next(data)
+        subdata = iter(cl.load_cifar_data(mode, batch_size=size))
+        self.inputs, self.labels = next(subdata)
 
     def __getitem__(self, index):
         img = self.inputs[index]
@@ -35,10 +35,10 @@ class cifarSubset(data.Dataset):
 
 # Testing Scripts
 def test():
-    cifar_test = cifarSubset()
+    cifar_test = cifar_subset()
 
-    for idx, data in enumerate(cifar_test, 0):
-        img, label = data
+    for idx, temp in enumerate(cifar_test, 0):
+        img, label = temp
         print(img.shape)
         print(label.shape)
         # break

@@ -1,8 +1,11 @@
 from __future__ import print_function
 
-import NeuralFP
+import sys
+
+sys.path.append('/home/tianweiy/Documents/deep_learning/AE/submit/mister_ed')
+
 import os
-import NFP.config as config
+import NFP.nfp_config as config
 import numpy as np
 import torch
 import torch.cuda as cuda
@@ -21,38 +24,10 @@ import logging
 from loss_functions import RegularizedLoss
 from loss_functions import PartialXentropy
 from NFP.model import CW2_Net
-from NFP.custom_datasets import cifarSubset
+from NFP.custom_datasets import cifar_subset
+import matplotlib.pyplot as plt
 
 
-def train(batch_size=48):
-    # set random seed for reproducibility
-    torch.manual_seed(1)
-    torch.cuda.manual_seed(1)  # ignore this if using CPU
-
-    # Match the normalizer using in the official implementation
-    normalizer = utils.DifferentiableNormalize(mean=[0.5, 0.5, 0.5],
-                                               std=[1.0, 1.0, 1.0])
-
-    # use resnet32
-    classifier_net = cl.load_pretrained_cifar_resnet(flavor=32,
-                                                     return_normalizer=False,
-                                                     manual_gpu=None)
-    # load cifar data
-    cifar_train = cl.load_cifar_data('train', batch_size=batch_size)
-    cifar_test = cl.load_cifar_data('train', batch_size=256)
-
-    nfp = NeuralFP(classifier_net=classifier_net, num_dx=5, num_class=10, dataset_name="cifar",
-                   log_dir="~/Documents/deep_learning/AE/submit/mister_ed/pretrained_model")
-
-    num_epochs = 30
-    verbosity_epoch = 5
-
-    train_loss = nn.CrossEntropyLoss()
-
-    logger = nfp.train(cifar_train, cifar_test, normalizer, num_epochs, train_loss,
-                       verbosity_epoch)
-
-    return logger
 
 
 def get_finger_print():
@@ -69,9 +44,9 @@ def get_finger_print():
     return fixed_dxs, fixed_dys
 
 
-def set_up_logger():
+def set_up_logger(index):
     logger = logging.getLogger('sanity')
-    hdlr = logging.FileHandler('/home/tianweiy/Documents/deep_learning/AE/NeuralFP/log/pgd_2000_16_5_testV3.log')
+    hdlr = logging.FileHandler('/home/tianweiy/Documents/deep_learning/AE/NeuralFP/log/' + index + ".log")
     formatter = logging.Formatter('%(asctime)s %(levelname)s %(message)s')
     hdlr.setFormatter(formatter)
     logger.addHandler(hdlr)
@@ -80,11 +55,12 @@ def set_up_logger():
     return logger
 
 
-def build_adv_examples(attack_method, classifier_net, normalizer, threat_model, attack_loss, num_iterations, inputs,
-                       labels):
+def build_adv_examples(attack, classifier_net, normalizer, threat_model, attack_loss, num_iterations, length,
+    inputs, labels):
     """Program to build adversarial example with the given images and labels"""
-    attack_object = attack_method(classifier_net, normalizer, threat_model, attack_loss)
-    perturbation_out = attack_object.attack(inputs, labels, num_iterations=num_iterations, verbose=False)
+    attack_object = attack(classifier_net, normalizer, threat_model, attack_loss)
+    perturbation_out = attack_object.attack(inputs, labels, num_iterations=num_iterations, step_size=length,
+                                            verbose=False)
     adv_examples = perturbation_out.adversarial_tensors()
     return adv_examples
 
@@ -113,17 +89,30 @@ def evaluation(dis_adv, dis_real, tau):
 def build_attack_loss(classifier_net, normalizer, loss, relative_weight):
     vanilla_loss = PartialXentropy(classifier_net, normalizer)
     losses = {'vanilla': vanilla_loss, 'fingerprint': loss}
-    scalars = {'vanilla': 1., 'fingerprint': -1 * relative_weight}
+    scalars = {'vanilla': 1., 'fingerprint': -1. * relative_weight}
     combine_loss = RegularizedLoss(losses=losses, scalars=scalars)
 
     return combine_loss
 
 
-def test(test_dataset, num_dx, num_iterations, threat_model, attack_method, weight):
+def get_prediction(normalizer, examples, classifier_net):
+    """Find the label of current image"""
+    if normalizer is not None:
+        examples = normalizer.forward(examples)
+
+    logits = classifier_net.forward(examples)
+    yhat = F.softmax(logits, dim=1)
+    pred = yhat.data.max(1, keepdim=True)[1]
+
+    return pred
+
+
+def test(dataset, num_dx, num_iterations, threat_model, attack_method, weight, step_size, logger):
     """
-    :param test_dataset: custom subset of cifar10
+    :param step_size: Attack Step Size. Should set to really small value
+    :param logger: Universal Logger
+    :param dataset: custom subset of cifar10
     :param num_dx: number of fingerprinting directions
-    :param attack_loss: A Regularized Loss Object
     :param num_iterations: Iteration Steps for gradient-based Attacks
     :param threat_model: Attack threatmodel
     :param attack_method: Attack Method. PGD/CW2 Whatever works.
@@ -148,8 +137,6 @@ def test(test_dataset, num_dx, num_iterations, threat_model, attack_method, weig
     classifier_net.eval()
 
     # Original Repo uses pin memory here
-    cifar_test = test_dataset
-
     normalizer = utils.DifferentiableNormalize(mean=[0.5, 0.5, 0.5], std=[1.0, 1.0, 1.0])
 
     fixed_dxs, fixed_dys = get_finger_print()
@@ -160,15 +147,19 @@ def test(test_dataset, num_dx, num_iterations, threat_model, attack_method, weig
     loss = NFLoss(classifier_net, num_dx=num_dx, num_class=10, fp_dx=fixed_dxs, fp_target=fixed_dys,
                   normalizer=normalizer)
 
-    logger = set_up_logger()
-
     logger.info("Use Weight " + str(weight))
 
     dis_adv = []
     dis_real = []
 
-    for idx, test_data in enumerate(cifar_test, 0):
+    success_attack = 0
+    success_classify = 0
+
+    for idx, test_data in enumerate(dataset, 0):
         inputs, labels = test_data
+
+        inputs = inputs.unsqueeze(0)
+        labels = labels.unsqueeze(0)
 
         # comment this if using CPU
         inputs = inputs.cuda()
@@ -179,47 +170,65 @@ def test(test_dataset, num_dx, num_iterations, threat_model, attack_method, weig
 
         # build adversarial example
         adv_examples = build_adv_examples(attack_method, classifier_net, normalizer, threat_model, attack_loss,
-                                          num_iterations, inputs, labels)
+                                          num_iterations, step_size, inputs, labels)
         assert adv_examples.size(0) is 1
 
         # compute adversarial loss
         l_adv = loss.forward(adv_examples, labels)
+
         loss.zero_grad()
 
         # compute real image loss
         l_real = loss.forward(inputs, labels)
+
         loss.zero_grad()
+
+        # get the label of real and adversarial images
+        adv_class = get_prediction(normalizer, adv_examples, classifier_net)
+        real_class = get_prediction(normalizer, inputs, classifier_net)
+
+        if labels.cpu().numpy() != adv_class.cpu().numpy() and labels.cpu().numpy() == real_class.cpu().numpy():
+            print("Success Attack")
+            success_attack += 1
+
+        if labels.cpu().numpy() == real_class.cpu().numpy():
+            print("Success Classify")
+            success_classify += 1
 
         dis_adv.append(l_adv)
         dis_real.append(l_real)
 
-    # Collect Informations for ROC AUC
-    total = len(dis_adv)
-    tp = []
-    fp = []
-    tn = []
-    fn = []
+    print("Attack Success: ", success_attack, "/ Total: ", len(dis_adv))
+    print("Classify Success: ", success_classify, "/ Total: ", len(dis_real))
 
-    for tau in reject_thresholds:
-        true_positive, false_positive, true_negative, false_negative = evaluation(dis_adv, dis_real, tau)
+    mean_adv = sum(dis_adv) / len(dis_adv)
+    min_adv = min(dis_adv)
+    max_adv = max(dis_adv)
 
-        tp.append(true_positive)
-        fp.append(false_positive)
-        tn.append(true_negative)
-        fn.append(false_negative)
+    mean_real = sum(dis_real) / len(dis_real)
+    min_real = min(dis_real)
+    max_real = max(dis_real)
 
-        logger.info("The threshold is " + str(tau))
-        logger.info("True Positive is " + str(true_positive / total * 100))
-        logger.info("False Positive is " + str(false_positive / total * 100))
+    logger.info("Mean Adv: " + str(mean_adv))
+    logger.info("Min Adv: " + str(min_adv))
+    logger.info("Max Adv: " + str(max_adv))
+
+    logger.info("Mean Real: " + str(mean_real))
+    logger.info("Min Real: " + str(min_real))
+    logger.info("Max Real: " + str(max_real))
 
 
 if __name__ == '__main__':
     test_dataset = config.dataset
-    num_dx = config.num_dx
-    num_iterations = config.num_iterations
-    threat_model = config.threat_model
-    weight = config.weight
-    attack_method = config.attack_method
+    num_x = config.num_dx
+    num_iter = config.num_iterations
+    threat = config.threat_model
+    gamma = config.weight
+    attack = config.attack_method
+    index = config.index
+    step_length = config.step_size
 
-    test(test_dataset, num_dx, num_iterations, threat_model, attack_method, weight)
+    log = set_up_logger(index)
 
+    test(dataset=test_dataset, num_dx=num_x, num_iterations=num_iter, threat_model=threat,
+         attack_method=attack, weight=gamma, step_size=step_length, logger=log)
